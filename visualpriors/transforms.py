@@ -1,9 +1,8 @@
-from .taskonomy_network import TaskonomyEncoder, TaskonomyDecoder, TaskonomyNetwork, TASKONOMY_PRETRAINED_URLS, TASKS_TO_CHANNELS, PIX_TO_PIX_TASKS, DONT_APPLY_TANH_TASKS
+from .taskonomy_network import TaskonomyEncoder, TaskonomyDecoder, TaskonomyNetwork, TASKONOMY_PRETRAINED_URLS, TASKS_TO_CHANNELS
 import multiprocessing.dummy as mp
 import torch
 
 default_device = 'cuda' if torch.cuda.is_available() else 'cpu'
-TASKONOMY_LOCATION = 'https://github.com/StanfordVL/taskonomy/tree/master/taskbank'
 
 def representation_transform(img, feature_task='normal', device=default_device):
     '''
@@ -32,7 +31,7 @@ def max_coverage_featureset_transform(img, k=4, device=default_device):
     Transforms an RGB image into a features driven by some vision tasks.
     The tasks are chosen according to the Max-Coverage Min-Distance Featureset
     From the paper:
-        Mid-Level Visual Representations Improve Generalization and Sample Efficiency 
+        Mid-Level Visual Representations Improve Generalization and Sample Efficiency
             for Learning Visuomotor Policies.
         Alexander Sax, Bradley Emi, Amir R. Zamir, Silvio Savarese, Leonidas Guibas, Jitendra Malik.
         Arxiv preprint 2018.
@@ -47,7 +46,7 @@ def max_coverage_featureset_transform(img, k=4, device=default_device):
 
 def feature_readout(img, feature_task='normal', device=default_device):
     '''
-    Transforms an RGB image into a feature driven by some vision task, 
+    Transforms an RGB image into a feature driven by some vision task,
     then returns the result of a readout of the feature.
         Expects inputs:
             shape  (batch_size, 3, 256, 256)
@@ -87,13 +86,13 @@ class VisualPrior(object):
              'denoising',
              'edge_texture',
              'edge_occlusion',
-             'egomotion', 
-             'fixated_pose', 
+             'egomotion',
+             'fixated_pose',
              'jigsaw',
              'keypoints2d',
              'keypoints3d',
              'nonfixated_pose',
-             'point_matching', 
+             'point_matching',
              'reshading',
              'depth_zbuffer',
              'depth_euclidean',
@@ -118,14 +117,15 @@ class VisualPrior(object):
             Outputs:
                 shape  (batch_size, 8, 16, 16)
 
-            This funciton is technically unsupported and there are absolutely no guarantees. 
+            This funciton is technically unsupported and there are absolutely no guarantees.
         '''
         VisualPriorRepresentation._load_unloaded_nets(feature_tasks)
         for t in feature_tasks:
             VisualPriorRepresentation.feature_task_to_net[t] = VisualPriorRepresentation.feature_task_to_net[t].to(device)
         nets = [VisualPriorRepresentation.feature_task_to_net[t] for t in feature_tasks]
-        with torch.no_grad():
-            return torch.cat([net(img) for net in nets], dim=1)
+        # with torch.no_grad():
+        #     return torch.cat([net(img) for net in nets], dim=1)
+        return torch.cat([net(img) for net in nets], dim=1)
 
     @classmethod
     def to_predicted_label(cls, img, feature_tasks=['normal'], device=default_device):
@@ -138,7 +138,7 @@ class VisualPrior(object):
                 shape  (batch_size, C, 256, 256)
                 values [-1,1]
 
-            This funciton is technically unsupported and there are absolutely no guarantees. 
+            This funciton is technically unsupported and there are absolutely no guarantees.
         '''
         VisualPriorPredictedLabel._load_unloaded_nets(feature_tasks)
         for t in feature_tasks:
@@ -146,7 +146,7 @@ class VisualPrior(object):
         nets = [VisualPriorPredictedLabel.feature_task_to_net[t] for t in feature_tasks]
         with torch.no_grad():
             return torch.cat([net(img) for net in nets], dim=1)
-    
+
     @classmethod
     def max_coverage_transform(cls, img, k=4, device=default_device):
         assert k > 0, 'Number of features to use for the max_coverage_transform must be > 0'
@@ -158,7 +158,7 @@ class VisualPrior(object):
     def set_model_dir(model_dir):
         cls.model_dir = model_dir
 
-    
+
 class VisualPriorRepresentation(object):
     '''
         Handles loading networks that transform images into encoded features.
@@ -188,15 +188,17 @@ class VisualPriorRepresentation(object):
 
     @classmethod
     def _load_encoder(cls, url, model_dir=None, progress=True):
-        net = TaskonomyEncoder() #.cuda()
+        net = TaskonomyEncoder(train_penultimate=False) #.cuda()
         net.eval()
         checkpoint = torch.utils.model_zoo.load_url(url, model_dir=model_dir, progress=progress)
         net.load_state_dict(checkpoint['state_dict'])
-        for p in net.parameters():
-            p.requires_grad = False
+        # TODO kill this - up to a given
+        # for p in net.parameters():
+        #     p.requires_grad = False
+
         # net = Compose(nn.GroupNorm(32, 32, affine=False), net)
         return net
-             
+
 
 
 class VisualPriorPredictedLabel(object):
@@ -208,11 +210,11 @@ class VisualPriorPredictedLabel(object):
         Outputs:
             shape  (batch_size, C, 256, 256)
             values [-1,1]
-            
-        This class is technically unsupported and there are absolutely no guarantees. 
+
+        This class is technically unsupported and there are absolutely no guarantees.
     '''
     feature_task_to_net = {}
-    
+
     @classmethod
     def _load_unloaded_nets(cls, feature_tasks, model_dir=None):
         net_paths_to_load = []
@@ -220,14 +222,10 @@ class VisualPriorPredictedLabel(object):
         for feature_task in feature_tasks:
             if feature_task not in cls.feature_task_to_net:
                 if feature_task not in TASKS_TO_CHANNELS:
-                    raise NotImplementedError('Task {} not implemented in VisualPriorPredictedLabel. Recommended to get predictions from {}'.format(feature_task, TASKONOMY_LOCATION))
-                is_decoder_mlp = (feature_task not in PIX_TO_PIX_TASKS)
-                apply_tanh = (feature_task not in DONT_APPLY_TANH_TASKS)
+                    raise NotImplementedError('Task {} not implemented in VisualPriorPredictedLabel'.format(feature_task))
                 net_paths_to_load.append((TASKS_TO_CHANNELS[feature_task],
                                           TASKONOMY_PRETRAINED_URLS[feature_task + '_encoder'],
-                                          TASKONOMY_PRETRAINED_URLS[feature_task + '_decoder'],
-                                          is_decoder_mlp, 
-                                          apply_tanh))
+                                          TASKONOMY_PRETRAINED_URLS[feature_task + '_decoder']))
                 feature_tasks_to_load.append(feature_task)
         nets = cls._load_networks(net_paths_to_load)
         for feature_task, net in zip(feature_tasks_to_load, nets):
@@ -236,13 +234,11 @@ class VisualPriorPredictedLabel(object):
     @classmethod
     def _load_networks(cls, network_paths, model_dir=None, progress=True):
         nets = []
-        for out_channels, encoder_path, decoder_path, is_decoder_mlp, apply_tanh in network_paths:
+        for out_channels, encoder_path, decoder_path in network_paths:
             nets.append(TaskonomyNetwork(
                     out_channels=out_channels,
                     load_encoder_path=encoder_path,
                     load_decoder_path=decoder_path,
                     model_dir=model_dir,
-                    is_decoder_mlp=is_decoder_mlp,
-                    apply_tanh=apply_tanh,
                     progress=progress))
         return nets

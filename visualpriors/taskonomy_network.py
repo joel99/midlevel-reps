@@ -11,13 +11,13 @@ task_mapping = {
  'denoise': 'denoising',
  'edge2d':'edge_texture',
  'edge3d': 'edge_occlusion',
- 'ego_motion': 'egomotion', 
- 'fix_pose': 'fixated_pose', 
+ 'ego_motion': 'egomotion',
+ 'fix_pose': 'fixated_pose',
  'jigsaw': 'jigsaw',
  'keypoint2d': 'keypoints2d',
  'keypoint3d': 'keypoints3d',
  'non_fixated_pose': 'nonfixated_pose',
- 'point_match': 'point_matching', 
+ 'point_match': 'point_matching',
  'reshade': 'reshading',
  'rgb2depth': 'depth_zbuffer',
  'rgb2mist': 'depth_euclidean',
@@ -38,24 +38,15 @@ CHANNELS_TO_TASKS = {
     2: ['curvature', 'principal_curvature'],
     3: ['autoencoding', 'denoising', 'normal', 'inpainting', 'rgb', 'normals'],
     17: ['segment_semantic'],
-    63: ['class_scene'],
     64: ['segment_unsup2d', 'segment_unsup25d'],
     1000: ['class_object'],
 }
 
 
-
-PIX_TO_PIX_TASKS = ['colorization', 'edge_texture', 'edge_occlusion',
-            'keypoints3d', 'keypoints2d', 'reshading',
-            'depth_zbuffer', 'depth_euclidean',
-            'curvature', 'autoencoding', 'denoising',
-            'normal', 'inpainting',
-            'segment_unsup2d', 'segment_unsup25d',
-            'segment_semantic', ]
+PIX_TO_PIX_TASKS = ['colorization', 'edge_texture', 'edge_occlusion',  'keypoints3d', 'keypoints2d', 'reshading', 'depth_zbuffer', 'depth_euclidean', 'curvature', 'autoencoding', 'denoising', 'normal', 'inpainting', 'segment_unsup2d', 'segment_unsup25d', 'segment_semantic', ]
 FEED_FORWARD_TASKS = ['class_object', 'class_scene', 'room_layout', 'vanishing_point']
 SINGLE_IMAGE_TASKS = PIX_TO_PIX_TASKS + FEED_FORWARD_TASKS
 SIAMESE_TASKS = ['fix_pose', 'jigsaw', 'ego_motion', 'point_match', 'non_fixated_pose']
-DONT_APPLY_TANH_TASKS = ['segment_semantic']
 
 
 TASKS_TO_CHANNELS = {}
@@ -114,36 +105,28 @@ TASKONOMY_PRETRAINED_URLS = {k.split("-")[0]: TASKONOMY_PRETRAINED_WEIGHT_URL_TE
                              for k in TASKONOMY_PRETRAINED_WEIGHT_FILES}
 
 class TaskonomyNetwork(nn.Module):
-    
+
     def __init__(self,
                  out_channels=3,
                  eval_only=True,
                  load_encoder_path=None,
                  load_decoder_path=None,
                  model_dir=None,
-                 is_decoder_mlp=False,
-                 apply_tanh=True,
                  progress=True):
-        ''' 
+        '''
             out_channels = None for decoder only
         '''
         super(TaskonomyNetwork, self).__init__()
         self.encoder = TaskonomyEncoder(eval_only=True)
         self.encoder.normalize_outputs = False
-        
+
         self.decoder = None
-        self.is_decoder_mlp = is_decoder_mlp
-        self.apply_tanh = apply_tanh
         if out_channels is not None:
-            self.decoder = TaskonomyDecoder(
-                                out_channels=out_channels,
-                                is_decoder_mlp=self.is_decoder_mlp,
-                                apply_tanh=self.apply_tanh, 
-                                eval_only=True)
-        
+            self.decoder = TaskonomyDecoder(out_channels=out_channels, eval_only=True)
+
         if load_encoder_path is not None:
             self.load_encoder(load_encoder_path, model_dir, progress)
-        
+
         if load_decoder_path is not None:
             self.load_decoder(load_decoder_path, model_dir, progress)
 
@@ -158,7 +141,7 @@ class TaskonomyNetwork(nn.Module):
 
     def forward(self, x):
         return self.decoder(self.encoder(x))
-        
+
 
 class Scissor(torch.nn.Module):
     # Remove the first row and column of our data
@@ -183,39 +166,29 @@ class TaskonomyDecoder(nn.Module):
     - See https://github.com/vdumoulin/conv_arithmetic to visualize deconvs
     """
 
-    def __init__(self, out_channels=3, eval_only=True, is_decoder_mlp=False, apply_tanh=True):
+    def __init__(self, out_channels=3, eval_only=True):
         super(TaskonomyDecoder, self).__init__()
-        self.is_decoder_mlp = is_decoder_mlp
-        if self.is_decoder_mlp:
-            self.fc0 = nn.Linear(2048,2048,bias=False)
-            self.bn0 = nn.BatchNorm1d(2048, momentum=0.1, affine=True)
-            self.relu0 = nn.ReLU(inplace=False)
-            self.dropout = nn.Dropout(p=0.5, inplace=False)
-            self.fc2 = nn.Linear(2048,out_channels)
-        else:
-            self.conv2 = self._make_layer(8, 1024)
-            self.conv3 = self._make_layer(1024, 1024)
-            self.conv4 = self._make_layer(1024, 512)
-            self.conv5 = self._make_layer(512, 256)
-            self.conv6 = self._make_layer(256, 256)
-            self.conv7 = self._make_layer(256, 128)
+        self.conv2 = self._make_layer(8, 1024)
+        self.conv3 = self._make_layer(1024, 1024)
+        self.conv4 = self._make_layer(1024, 512)
+        self.conv5 = self._make_layer(512, 256)
+        self.conv6 = self._make_layer(256, 256)
+        self.conv7 = self._make_layer(256, 128)
 
-            self.deconv8 = self._make_layer(128, 64, stride=2, deconv=True)
-            self.conv9 = self._make_layer(64, 64)
+        self.deconv8 = self._make_layer(128, 64, stride=2, deconv=True)
+        self.conv9 = self._make_layer(64, 64)
 
-            self.deconv10 = self._make_layer(64, 32, stride=2, deconv=True)
-            self.conv11 = self._make_layer(32, 32)
+        self.deconv10 = self._make_layer(64, 32, stride=2, deconv=True)
+        self.conv11 = self._make_layer(32, 32)
 
-            self.deconv12 = self._make_layer(32, 16, stride=2, deconv=True)
-            self.conv13 = self._make_layer(16, 32)
+        self.deconv12 = self._make_layer(32, 16, stride=2, deconv=True)
+        self.conv13 = self._make_layer(16, 32)
 
-            self.deconv14 = self._make_layer(32, 16, stride=2, deconv=True)
-            
-            decoder_output_layers = [nn.Conv2d(16, out_channels, kernel_size=3, stride=1, bias=True, padding=1)]
-            if apply_tanh:
-                decoder_output_layers.append(nn.Tanh())
-            self.decoder_output = nn.Sequential(*decoder_output_layers)
-
+        self.deconv14 = self._make_layer(32, 16, stride=2, deconv=True)
+        self.decoder_output = nn.Sequential(
+            nn.Conv2d(16, out_channels, kernel_size=3, stride=1, bias=True, padding=1),
+            nn.Tanh()
+        )
 
         self.eval_only = eval_only
         if self.eval_only:
@@ -242,39 +215,26 @@ class TaskonomyDecoder(nn.Module):
         return layer
 
     def forward(self, x):
-        if self.is_decoder_mlp:
-            if len(x.shape) == 4 and x.shape[2] == x.shape[3]:
-                # NCHW to NHWC
-                # weights from TF require the input to be ordered in this fashion
-                # calling .view on (N,8,16,16) is different from (N,16,16,8)
-                x = x.permute((0,2,3,1)).contiguous()
-            x = x.view(-1, 2048)
-            x = self.fc0(x)
-            x = self.bn0(x)
-            x = self.relu0(x)
-            x = self.dropout(x)
-            x = self.fc2(x)
-        else:
-            # Input x: N x 256 x 256 x 3
-            x = self.conv2(x)
-            x = self.conv3(x)
-            x = self.conv4(x)
-            x = self.conv5(x)
-            x = self.conv6(x)
-            x = self.conv7(x)
+        # Input x: N x 256 x 256 x 3
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+        x = self.conv6(x)
+        x = self.conv7(x)
 
-            x = self.deconv8(x)
-            x = self.conv9(x)
+        x = self.deconv8(x)
+        x = self.conv9(x)
 
-            x = self.deconv10(x)
-            x = self.conv11(x)
+        x = self.deconv10(x)
+        x = self.conv11(x)
 
-            x = self.deconv12(x)
-            x = self.conv13(x)
+        x = self.deconv12(x)
+        x = self.conv13(x)
 
-            x = self.deconv14(x)
-            x = self.decoder_output(x)
-            # add gaussian-noise?
+        x = self.deconv14(x)
+        x = self.decoder_output(x)
+        # add gaussian-noise?
         return x
 
 
@@ -317,10 +277,6 @@ class Bottleneck(nn.Module):
 
         return out
 
-class TaskonomyClassificationDecoder(nn.Module):
-    def __init__(self, out_channels=3, eval_only=True):
-        super(TaskonomyClassificationDecoder, self).__init__()
-
 
 class TaskonomyEncoder(nn.Module):
 
@@ -349,8 +305,14 @@ class TaskonomyEncoder(nn.Module):
             p.requires_grad = False
 
         if train_penultimate:
+            for param in self.groupnorm.parameters():
+                param.requires_grad = True
+            for param in self.layer4[-1].parameters():
+                param.requires_grad = True
             for name, param in self.named_parameters():
-                if 'compress' in name:  # last layers: compress1.weight, compress_bn.weight, compress_bn.bias
+                # enable finetuning of what we want
+                if 'compress1' in name: # custom penultimates - we can't fit layer4
+                    # last layers: compress1.weight, compress_bn.weight, compress_bn.bias
                     param.requires_grad = True
                 else:
                     param.requires_grad = False
@@ -398,6 +360,7 @@ class TaskonomyEncoder(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
+        # Maybe up to here and below
         x = self.layer4(x)
 
         x = self.compress1(x)
